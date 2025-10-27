@@ -19,12 +19,13 @@ mongoose.connect(MONGO_URI)
 
 const app = express(); 
 
-// CORS
+// CORS 
 app.use(cors({
-  origin: ['http://localhost:1111','https://yourosmanager.onrender.com'],
+  origin: ['http://localhost:1111', 'https://yourosmanager.onrender.com'], // Replace with YOUR actual Render frontend URL
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
+  exposedHeaders: ['Set-Cookie']
 }));
 
 // Middleware
