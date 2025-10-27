@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Manage your folders with OS Manager">
+  <title>Folders — OS Manager</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Hide content until authentication is verified */
+    #protectedContent {
+      display: none;
+    }
+    
+    #loadingAuth {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 60vh;
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container" style="display: flex; justify-content: space-between; align-items: center;">
+      <a class="navbar-brand" href="index.html">🗂️ OS Manager</a>
+      <div id="navButtons" style="display: flex; gap: 0.75rem;">
+        <a href="auth.html" class="btn btn-primary btn-sm" style="margin: 0;">
+          <span>🔐</span>
+          <span>Login / Signup</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container mt-5">
+    <div id="loadingAuth">
+      <p>🔐 Verifying authentication...</p>
+    </div>
+    
+    <div id="protectedContent">
+      <h2>📁 Folder Manager</h2>
+
+      <form id="createFolderForm" class="d-flex mb-4">
+        <input id="folderName" class="form-control" placeholder="Enter new folder name" required aria-label="Folder name">
+        <button type="submit" class="btn btn-success">
+          <span>✨</span>
+          <span>Create Folder</span>
+        </button>
+      </form>
+
+      <h5 class="list-heading">📁 Your Folders</h5>
+      <div id="folderGrid"></div>
+    </div>
+  </main>
+
+  <!-- Rename Folder Modal -->
+  <div class="modal fade" id="renameModal" tabindex="-1" aria-labelledby="renameModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content rounded-4">
+        <div class="modal-header">
+          <h5 class="modal-title" id="renameModalLabel">✏️ Rename Folder</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label for="renameInput" class="form-label">New folder name:</label>
+          <input type="text" id="renameInput" class="form-control" placeholder="Enter new name" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="renameConfirm" class="btn btn-primary w-100">
+            <span>💾</span>
+            <span>Save Changes</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>&copy; 2025 OS Manager. All rights reserved.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const API_BASE_URL = "http://localhost:1111";
+    
+    const folderGrid = document.getElementById("folderGrid");
+    const folderNameInput = document.getElementById("folderName");
+    let renameTarget = "";
+    const renameModal = new bootstrap.Modal(document.getElementById("renameModal"));
+    const renameInput = document.getElementById("renameInput");
+
+    // Check authentication and show appropriate button
+    async function checkAuth() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/me`, {
+          credentials: 'include'
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.user) {
+            // User is logged in, show RED logout button
+            document.getElementById('navButtons').innerHTML = `
+              <span style="color: white; display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+                👤 ${escapeHtml(data.user.name)}
+              </span>
+              <button id="logoutBtn" class="btn btn-danger btn-sm" style="margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                <span>🚪</span>
+                <span>Logout</span>
+              </button>
+            `;
+            
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+            
+            // Show protected content
+            document.getElementById('loadingAuth').style.display = 'none';
+            document.getElementById('protectedContent').style.display = 'block';
+            
+            // Load folders after authentication is verified
+            loadFolders();
+          } else {
+            // User not logged in, redirect to auth page
+            window.location.href = 'auth.html';
+          }
+        } else {
+          // Not authenticated, redirect to auth page
+          window.location.href = 'auth.html';
+        }
+      } catch (error) {
+        console.log('Not authenticated');
+        window.location.href = 'auth.html';
+      }
+    }
+    
+    async function logout() {
+      try {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        window.location.href = 'index.html';
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+    }
+
+    async function loadFolders() {
+      folderGrid.innerHTML = "<p class='text-muted'>Loading folders...</p>";
+      try {
+        const res = await fetch(`${API_BASE_URL}/folder/list`);
+        
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        
+        const folders = await res.json();
+        folderGrid.innerHTML = "";
+        
+        if (!folders.length) {
+          folderGrid.innerHTML = "<p class='text-muted'>🔭 No folders yet. Create your first folder above!</p>";
+          return;
+        }
+
+        folders.forEach(folderName => {
+          const item = document.createElement("div");
+          item.className = "folder-item";
+          item.style.animation = "slideIn 0.3s ease";
+
+          item.innerHTML = `
+            <a href="files.html?folder=${encodeURIComponent(folderName)}" class="folder-name">
+              <span>📁</span>
+              <span>${escapeHtml(folderName)}</span>
+            </a>
+            <div class="folder-actions">
+              <button class="btn btn-primary btn-sm rename-btn" aria-label="Rename ${escapeHtml(folderName)}">
+                <span>✏️</span>
+                <span>Rename</span>
+              </button>
+              <button class="btn btn-danger btn-sm delete-btn" aria-label="Delete ${escapeHtml(folderName)}">
+                <span>🗑️</span>
+                <span>Delete</span>
+              </button>
+            </div>
+          `;
+
+          const renameBtn = item.querySelector(".rename-btn");
+          const deleteBtn = item.querySelector(".delete-btn");
+
+          renameBtn.onclick = (e) => {
+            e.preventDefault();
+            renameTarget = folderName;
+            renameInput.value = folderName;
+            renameModal.show();
+          };
+
+          deleteBtn.onclick = async (e) => {
+            e.preventDefault();
+            if (!confirm(`⚠️ Are you sure you want to delete the folder "${folderName}"?\n\nAll files inside will also be deleted. This action cannot be undone.`)) return;
+            
+            try {
+              const response = await fetch(`${API_BASE_URL}/folder/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name: folderName })
+              });
+              
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              
+              const result = await response.json();
+              if (result.message === "folder deleted") {
+                loadFolders();
+              } else {
+                alert(`❌ ${result.message}`);
+              }
+            } catch (error) {
+              console.error("Error deleting folder:", error);
+              alert("❌ Error deleting folder. Please try again.");
+            }
+          };
+
+          folderGrid.appendChild(item);
+        });
+      } catch (error) {
+        console.error("Error loading folders:", error);
+        folderGrid.innerHTML = "<p class='text-danger'>❌ Error loading folders. Please refresh the page.</p>";
+      }
+    }
+
+    document.getElementById("renameConfirm").onclick = async () => {
+      const newName = renameInput.value.trim();
+      if (!newName) {
+        alert("⚠️ Please enter a folder name.");
+        return;
+      }
+      
+      if (newName === renameTarget) {
+        alert("⚠️ New name is the same as the old name.");
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/folder/rename`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ oldname: renameTarget, newname: newName })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.message === "folder renamed") {
+          renameModal.hide();
+          loadFolders();
+        } else {
+          alert(`❌ ${result.message}`);
+        }
+      } catch (error) {
+        console.error("Error renaming folder:", error);
+        alert("❌ Error renaming folder. Please try again.");
+      }
+    };
+
+    document.getElementById("createFolderForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const name = folderNameInput.value.trim();
+      if (!name) {
+        alert("⚠️ Please enter a folder name.");
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/folder/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.message === "folder created") {
+          folderNameInput.value = "";
+          loadFolders();
+        } else {
+          alert(`❌ ${result.message}`);
+        }
+      } catch (error) {
+        console.error("Error creating folder:", error);
+        alert("❌ Error creating folder. Please try again.");
+      }
+    };
+
+    // Utility function to escape HTML
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    checkAuth();
+  </script>
+</body>
+</html>

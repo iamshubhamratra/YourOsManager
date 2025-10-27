@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Manage your files with OS Manager">
+  <title>Files — OS Manager</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    /* Hide content until authentication is verified */
+    #protectedContent {
+      display: none;
+    }
+    
+    #loadingAuth {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 60vh;
+      font-size: 1.2rem;
+      color: var(--text-secondary);
+    }
+  </style>
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container" style="display: flex; justify-content: space-between; align-items: center;">
+      <a class="navbar-brand" href="folders.html">🗂️ OS Manager</a>
+      <div id="navButtons" style="display: flex; gap: 0.75rem;">
+        <a href="auth.html" class="btn btn-primary btn-sm" style="margin: 0;">
+          <span>🔐</span>
+          <span>Login / Signup</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="container mt-5">
+    <div id="loadingAuth">
+      <p>🔐 Verifying authentication...</p>
+    </div>
+    
+    <div id="protectedContent">
+      <h2 id="title">📄 Files</h2>
+
+      <form id="createFileForm" class="d-flex mb-4">
+        <input id="fileName" class="form-control" placeholder="File name (e.g., document.txt)" required aria-label="File name">
+        <input id="fileDetails" class="form-control" placeholder="File content (optional)" aria-label="File content">
+        <button type="submit" class="btn btn-success">
+          <span>✨</span>
+          <span>Create File</span>
+        </button>
+      </form>
+
+      <h5 class="list-heading">📄 Your Files</h5>
+      <div id="fileList"></div>
+    </div>
+  </main>
+
+  <!-- Rename File Modal -->
+  <div class="modal fade" id="renameModal" tabindex="-1" aria-labelledby="renameModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content rounded-4">
+        <div class="modal-header">
+          <h5 class="modal-title" id="renameModalLabel">✏️ Rename File</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <label for="renameInput" class="form-label">New file name:</label>
+          <input type="text" id="renameInput" class="form-control" placeholder="Enter new name" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="renameConfirm" class="btn btn-primary w-100">
+            <span>💾</span>
+            <span>Save Changes</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- File Preview Modal -->
+  <div class="modal fade" id="previewModal" tabindex="-1" aria-labelledby="previewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content rounded-4">
+        <div class="modal-header">
+          <h5 class="modal-title" id="previewTitle">📄 File Preview</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <pre id="previewContent" class="bg-light p-3 rounded-3"></pre>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="editFileBtn" class="btn btn-primary">
+            <span>✏️</span>
+            <span>Edit Content</span>
+          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Edit File Content Modal -->
+  <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+      <div class="modal-content rounded-4">
+        <div class="modal-header">
+          <h5 class="modal-title" id="editModalLabel">✏️ Edit File Content</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="editContent" class="form-label">File Content:</label>
+            <textarea id="editContent" class="form-control" rows="10" placeholder="Enter file content..."></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" id="updateContentBtn" class="btn btn-success">
+            <span>💾</span>
+            <span>Update (Replace)</span>
+          </button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>&copy; 2025 OS Manager. All rights reserved.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const API_BASE_URL = "http://localhost:1111";
+    
+    const params = new URLSearchParams(location.search);
+    const folder = params.get("folder");
+    
+    // Check folder parameter first (but don't show alert yet)
+    const hasFolderParam = !!folder;
+
+    const fileList = document.getElementById("fileList");
+    const renameModal = new bootstrap.Modal(document.getElementById("renameModal"));
+    const previewModal = new bootstrap.Modal(document.getElementById("previewModal"));
+    const editModal = new bootstrap.Modal(document.getElementById("editModal"));
+    const renameInput = document.getElementById("renameInput");
+    let renameTarget = "";
+    
+    // Global variables for edit functionality
+    let currentEditFile = null;
+    let currentEditFolder = null;
+
+    // Check authentication and show logout button
+    async function checkAuth() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/me`, {
+          credentials: 'include'
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.user) {
+            // User is logged in
+            
+            // NOW check if folder parameter exists
+            if (!hasFolderParam) {
+              window.location.href = "folders.html";
+              return;
+            }
+            
+            // Set the title
+            document.getElementById("title").innerHTML = `📄 Files in "<span style="color: var(--primary-color);">${escapeHtml(folder)}</span>"`;
+            
+            // Show RED logout button
+            document.getElementById('navButtons').innerHTML = `
+              <span style="color: white; display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+                👤 ${escapeHtml(data.user.name)}
+              </span>
+              <button id="logoutBtn" class="btn btn-danger btn-sm" style="margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                <span>🚪</span>
+                <span>Logout</span>
+              </button>
+            `;
+            
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+            
+            // Show protected content
+            document.getElementById('loadingAuth').style.display = 'none';
+            document.getElementById('protectedContent').style.display = 'block';
+            
+            // Load files after authentication is verified
+            loadFiles();
+          } else {
+            // User not logged in, redirect to auth page
+            window.location.href = 'auth.html';
+          }
+        } else {
+          // Not authenticated, redirect to auth page
+          window.location.href = 'auth.html';
+        }
+      } catch (error) {
+        console.log('Not authenticated');
+        window.location.href = 'auth.html';
+      }
+    }
+    
+    async function logout() {
+      try {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        window.location.href = 'index.html';
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+    }
+
+    async function loadFiles() {
+      fileList.innerHTML = "<p class='text-muted'>Loading files...</p>";
+      try {
+        const res = await fetch(`${API_BASE_URL}/file/list?folder=${encodeURIComponent(folder)}`);
+        if (!res.ok) {
+          throw new Error(`HTTP error! status: ${res.status}`);
+        }
+        const files = await res.json();
+        fileList.innerHTML = "";
+        
+        if (!files.length) {
+          fileList.innerHTML = "<p class='text-muted'>🔭 No files yet. Create your first file above!</p>";
+          return;
+        }
+
+        files.forEach(fileName => {
+          const item = document.createElement("div");
+          item.className = "file-item";
+          item.style.animation = "slideIn 0.3s ease";
+
+          const fileIcon = getFileIcon(fileName);
+
+          item.innerHTML = `
+            <div style="flex: 1;">
+              <span class="file-name">
+                <span>${fileIcon}</span>
+                <span>${escapeHtml(fileName)}</span>
+              </span>
+            </div>
+            <div class="file-actions">
+              <button class="btn btn-primary btn-sm preview-btn" aria-label="Preview ${escapeHtml(fileName)}">
+                <span>👁️</span>
+                <span>Preview</span>
+              </button>
+              <button class="btn btn-primary btn-sm rename-btn" aria-label="Rename ${escapeHtml(fileName)}">
+                <span>✏️</span>
+                <span>Rename</span>
+              </button>
+              <button class="btn btn-danger btn-sm delete-btn" aria-label="Delete ${escapeHtml(fileName)}">
+                <span>🗑️</span>
+                <span>Delete</span>
+              </button>
+            </div>
+          `;
+
+          const fileNameEl = item.querySelector(".file-name");
+          const previewBtn = item.querySelector(".preview-btn");
+          const renameBtn = item.querySelector(".rename-btn");
+          const deleteBtn = item.querySelector(".delete-btn");
+
+          const previewFile = async () => {
+            try {
+              const res = await fetch(`${API_BASE_URL}/file/content?folder=${encodeURIComponent(folder)}&name=${encodeURIComponent(fileName)}`);
+              if (!res.ok) {
+                throw new Error(`HTTP error! status: ${res.status}`);
+              }
+              const data = await res.json();
+              if (data.content !== undefined) {
+                // SET THESE VARIABLES BEFORE SHOWING MODAL
+                currentEditFile = fileName;
+                currentEditFolder = folder;
+                
+                document.getElementById("previewTitle").innerHTML = `📄 ${escapeHtml(fileName)}`;
+                document.getElementById("previewContent").textContent = data.content || "(Empty file)";
+                previewModal.show();
+              } else {
+                alert("⚠️ Unable to load file content");
+              }
+            } catch (error) {
+              console.error("Error loading file content:", error);
+              alert("❌ Error loading file content");
+            }
+          };
+
+          fileNameEl.onclick = previewFile;
+          previewBtn.onclick = (e) => {
+            e.preventDefault();
+            previewFile();
+          };
+
+          renameBtn.onclick = (e) => {
+            e.preventDefault();
+            renameTarget = fileName;
+            renameInput.value = fileName;
+            renameModal.show();
+          };
+
+          deleteBtn.onclick = async (e) => {
+            e.preventDefault();
+            if (!confirm(`⚠️ Are you sure you want to delete "${fileName}"?\n\nThis action cannot be undone.`)) return;
+            
+            try {
+              const response = await fetch(`${API_BASE_URL}/file/delete`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ folder, name: fileName })
+              });
+              
+              if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+              }
+              
+              const result = await response.json();
+              if (result.message === "file deleted") {
+                loadFiles();
+              } else {
+                alert(`❌ ${result.message}`);
+              }
+            } catch (error) {
+              console.error("Error deleting file:", error);
+              alert("❌ Error deleting file. Please try again.");
+            }
+          };
+
+          fileList.appendChild(item);
+        });
+      } catch (error) {
+        console.error("Error loading files:", error);
+        fileList.innerHTML = "<p class='text-danger'>❌ Error loading files. Please refresh the page.</p>";
+      }
+    }
+
+    // Edit button in preview modal
+    document.getElementById("editFileBtn").onclick = async () => {
+      try {
+        const currentContent = document.getElementById("previewContent").textContent;
+        
+        // Use the content from preview instead of fetching again
+        if (currentContent && currentContent !== "(Empty file)") {
+          document.getElementById("editContent").value = currentContent;
+        } else {
+          document.getElementById("editContent").value = "";
+        }
+        
+        document.getElementById("editModalLabel").innerHTML = `✏️ Edit: ${escapeHtml(currentEditFile)}`;
+        
+        previewModal.hide();
+        editModal.show();
+      } catch (error) {
+        console.error("Error opening edit modal:", error);
+        alert("❌ Error opening edit modal. Please try again.");
+      }
+    };
+
+    // Update content (replace)
+    document.getElementById("updateContentBtn").onclick = async () => {
+      const newContent = document.getElementById("editContent").value;
+      
+      if (!currentEditFile || !currentEditFolder) {
+        alert("⚠️ No file selected for editing");
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/file/update`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: 'include',
+          body: JSON.stringify({ 
+            folder: currentEditFolder, 
+            name: currentEditFile, 
+            details: newContent 
+          })
+        });
+        
+        if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+        
+        const result = await response.json();
+        if (result.message === "file updated") {
+          editModal.hide();
+          alert("✅ File content updated successfully!");
+          // Reload to refresh the file list
+          loadFiles();
+        } else {
+          alert(`❌ ${result.message}`);
+        }
+      } catch (error) {
+        console.error("Error updating file:", error);
+        alert("❌ Error updating file content. Please try again.");
+      }
+    };
+
+    document.getElementById("renameConfirm").onclick = async () => {
+      const newName = renameInput.value.trim();
+      if (!newName) {
+        alert("⚠️ Please enter a file name.");
+        return;
+      }
+      
+      if (newName === renameTarget) {
+        alert("⚠️ New name is the same as the old name.");
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/file/rename`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: 'include',
+          body: JSON.stringify({ folder, oldname: renameTarget, newname: newName })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.message === "file renamed") {
+          renameModal.hide();
+          loadFiles();
+        } else {
+          alert(`❌ ${result.message}`);
+        }
+      } catch (error) {
+        console.error("Error renaming file:", error);
+        alert("❌ Error renaming file. Please try again.");
+      }
+    };
+
+    document.getElementById("createFileForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const name = document.getElementById("fileName").value.trim();
+      const details = document.getElementById("fileDetails").value;
+      if (!name) {
+        alert("⚠️ Please enter a file name.");
+        return;
+      }
+      
+      try {
+        const response = await fetch(`${API_BASE_URL}/file/create`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: 'include',
+          body: JSON.stringify({ folder, name, details })
+        });
+        
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.message === "file created") {
+          document.getElementById("fileName").value = "";
+          document.getElementById("fileDetails").value = "";
+          loadFiles();
+        } else {
+          alert(`❌ ${result.message}`);
+        }
+      } catch (error) {
+        console.error("Error creating file:", error);
+        alert("❌ Error creating file. Please try again.");
+      }
+    };
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function getFileIcon(filename) {
+      const ext = filename.split('.').pop().toLowerCase();
+      const icons = {
+        'txt': '📝', 'doc': '📃', 'docx': '📃', 'pdf': '📕',
+        'jpg': '🖼️', 'jpeg': '🖼️', 'png': '🖼️', 'gif': '🖼️',
+        'svg': '🎨', 'mp3': '🎵', 'mp4': '🎬', 'zip': '📦',
+        'rar': '📦', 'js': '💻', 'html': '🌐', 'css': '🎨',
+        'json': '📋', 'xml': '📋', 'csv': '📊', 'xls': '📊', 'xlsx': '📊'
+      };
+      return icons[ext] || '📄';
+    }
+
+    checkAuth();
+  </script>
+</body>
+</html>

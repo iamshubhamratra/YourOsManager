@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="OS Manager - Professional file and folder management system">
+  <title>OS Manager - Professional File Management</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav class="navbar">
+    <div class="container" style="display: flex; justify-content: space-between; align-items: center;">
+      <span class="navbar-brand">🗂️ OS Manager</span>
+      <div id="navButtons" style="display: flex; gap: 0.75rem;">
+        <a href="auth.html" class="btn btn-primary btn-sm" style="margin: 0;">
+          <span>🔐</span>
+          <span>Login / Signup</span>
+        </a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="hero">
+    <h1>Welcome to OS Manager</h1>
+    <p>A powerful, intuitive platform to visualize, create, and manage your folders and files with professional ease.</p>
+    
+    <div id="heroButtons" style="display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center;">
+      <!-- Buttons will be dynamically inserted here -->
+    </div>
+
+    <div class="features">
+      <div class="feature-card">
+        <h3>⚡ Fast & Modern</h3>
+        <p>Built with cutting-edge design principles. Responsive, accessible, and blazing fast.</p>
+      </div>
+      <div class="feature-card">
+        <h3>🔐 Secure Authentication</h3>
+        <p>Create your account with industry-standard encryption. Your data is protected with JWT tokens and secure cookies.</p>
+      </div>
+      <div class="feature-card">
+        <h3>📁 Unified File Management</h3>
+        <p>Create, rename, and delete folders and files with an intuitive interface. Organize your workspace efficiently with full content preview support.</p>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>&copy; 2025 OS Manager. All rights reserved. Built with precision and care.</p>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    const API_BASE_URL = "http://localhost:1111";
+    
+    // Check if user is logged in
+    async function checkAuth() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/auth/me`, {
+          credentials: 'include'
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.user) {
+            // User is logged in, show logout button (RED) and Browse Folders
+            document.getElementById('navButtons').innerHTML = `
+              <span style="color: white; display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+                👤 ${escapeHtml(data.user.name)}
+              </span>
+              <button id="logoutBtn" class="btn btn-danger btn-sm" style="margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);">
+                <span>🚪</span>
+                <span>Logout</span>
+              </button>
+            `;
+            
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+            
+            // User is logged in, show Browse Folders button
+            document.getElementById('heroButtons').innerHTML = `
+              <a href="folders.html" class="btn btn-success btn-lg">
+                <span>📁</span>
+                <span>Browse Folders</span>
+              </a>
+            `;
+          } else {
+            // User not logged in, show Get Started button
+            showGuestView();
+          }
+        } else {
+          // Not authenticated, show Get Started button
+          showGuestView();
+        }
+      } catch (error) {
+        console.log('Not authenticated');
+        showGuestView();
+      }
+    }
+    
+    function showGuestView() {
+      // Show blue login/signup button in nav
+      document.getElementById('navButtons').innerHTML = `
+        <a href="auth.html" class="btn btn-primary btn-sm" style="margin: 0;">
+          <span>🔐</span>
+          <span>Login / Signup</span>
+        </a>
+      `;
+      
+      // Show Get Started button in hero
+      document.getElementById('heroButtons').innerHTML = `
+        <a href="auth.html" class="btn btn-primary btn-lg">
+          <span>🚀</span>
+          <span>Get Started</span>
+        </a>
+      `;
+    }
+    
+    async function logout() {
+      try {
+        await fetch(`${API_BASE_URL}/auth/logout`, {
+          method: 'POST',
+          credentials: 'include'
+        });
+        window.location.reload();
+      } catch (error) {
+        console.error('Logout error:', error);
+      }
+    }
+    
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+    
+    checkAuth();
+  </script>
+</body>
+</html>
