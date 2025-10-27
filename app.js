@@ -21,7 +21,7 @@ const app = express();
 
 // CORS
 app.use(cors({
-  origin: 'http://localhost:1111',
+  origin: ['http://localhost:1111','https://yourosmanager.onrender.com'],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
